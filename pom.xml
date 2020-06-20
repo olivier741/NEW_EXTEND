@@ -48,6 +48,14 @@
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
         </dependency>
+        
+        <!-- https://mvnrepository.com/artifact/org.apache.commons/commons-lang3 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.10</version>
+        </dependency>
+
  
         
         <dependency>
@@ -219,19 +227,8 @@
     </dependencies> 
               
     <build>
-        <finalName>Process</finalName>
-         
-        <resources>
-            <resource>
-                <directory>src/main/resources/META-INF</directory>
-                <targetPath>META-INF</targetPath>
-                <includes>
-                    <include>persistence.xml</include>
-                </includes>
-            </resource>
-           
-        </resources>
-       
+        <finalName>Extend</finalName>
+
         <plugins>
            
             <plugin>
@@ -257,10 +254,10 @@
                             <logsDirectory>logs</logsDirectory>
                             <daemons>
                                 <daemon>
-                                    <id>Process</id>
+                                    <id>Extend</id>
                                     <!-- the next line is added by default if you don't have wrapperMainClass's setting -->
                                     <wrapperMainClass>org.tanukisoftware.wrapper.WrapperSimpleApp</wrapperMainClass>
-                                    <mainClass>com.tatsinktech.process.ApplicationProcess</mainClass>
+                                    <mainClass>com.tatsinktech.extend.ApplicationProcess</mainClass>
                                     <!-- <commandLineArguments> 
                                             <commandLineArgument>start</commandLineArgument> 
                                     </commandLineArguments> -->
@@ -329,7 +326,7 @@
                         <phase>package</phase>
                         <configuration>
                             <target>
-                                <mkdir dir="${project.build.directory}/daemon/jsw/Process/log/wrapper"/>
+                                <mkdir dir="${project.build.directory}/daemon/jsw/Extend/log/wrapper"/>
                             </target>
                         </configuration>
                         <goals>
@@ -337,6 +334,18 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-verbose</arg>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
             </plugin>
             
         </plugins>
