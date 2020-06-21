@@ -50,7 +50,7 @@ public class ExtendProcess implements Runnable {
     private static Logger logger = LoggerFactory.getLogger(ExtendProcess.class);
 
     private static int sleep_duration;
-    private static int threadPool;
+    private static int number_thread;
     private static int maxRow;
     private static InetAddress address;
 
@@ -82,7 +82,7 @@ public class ExtendProcess implements Runnable {
     @PostConstruct
     private void init() {
         ExtendProcess.sleep_duration = Integer.parseInt(commonConfig.getApplicationExtendSleepDuration());
-        ExtendProcess.threadPool = Integer.parseInt(commonConfig.getApplicationExtendThreadPool());
+        ExtendProcess.number_thread = Integer.parseInt(commonConfig.getApplicationExtendNumberThread());
         ExtendProcess.maxRow = Integer.parseInt(commonConfig.getApplicationExtendMaxRegRecord());
         ExtendProcess.address = Utils.gethostName();
 
@@ -98,9 +98,10 @@ public class ExtendProcess implements Runnable {
 
             Date current_time = new Date();
             PageRequest pageable = PageRequest.of(0, maxRow, Direction.ASC, "id");
- 
             int passage = 0;
-            if (threadPool < 2) {
+            logger.info("################ START SCAN BY "+Thread.currentThread().getName()+"###############");
+            if (number_thread < 2) {
+                
                 List<Register> listActiveRegister = registerRepo.findActiveExtend(current_time, pageable);
                 if (listActiveRegister != null && !listActiveRegister.isEmpty()) {
                     passage = 1;
@@ -115,14 +116,14 @@ public class ExtendProcess implements Runnable {
                 }
 
             } else {
-                List<Register> listActiveRegister = registerRepo.findActiveExtendByThread(current_time, threadPool, threadID, pageable);
+                List<Register> listActiveRegister = registerRepo.findActiveExtendByThread(current_time, number_thread, threadID, pageable);
                 if (listActiveRegister != null && !listActiveRegister.isEmpty()) {
                     passage = 1;
                     processExtend(listActiveRegister);
 
                 }
 
-                List<Register> listPendingRegister = registerRepo.findPendingExtendByThread(threadPool, threadID, pageable);
+                List<Register> listPendingRegister = registerRepo.findPendingExtendByThread(number_thread, threadID, pageable);
                 if (listPendingRegister != null && !listPendingRegister.isEmpty()) {
                     passage = 1;
                     processExtend(listPendingRegister);
@@ -140,6 +141,7 @@ public class ExtendProcess implements Runnable {
 
         logger.info("#################### START NEW SCAN side = " + listRegister.size() + " ##################");
         for (Register reg : listRegister) {
+            
             String msisdn = reg.getMsisdn();
             String transaction_id = reg.getTransactionId();
             Product product = reg.getProduct();
@@ -152,6 +154,26 @@ public class ExtendProcess implements Runnable {
             Timestamp receive_time = new Timestamp((new Date()).getTime());
             long charge_fee;
             int charge_status = 0;
+            
+            String status_value = "ACTIVE";
+            if (status == 0){
+                status_value = "CANCEL";
+            }else if (status == 2){
+                status_value = "PENDING";
+            }else if (status == -1){
+                status_value = "CANCEL_OPERATOR";
+            }else if (status == -2){
+                status_value = "OFFER_EXPIRE";
+            }
+            
+            logger.info("msisdn = "+msisdn);
+            logger.info("transaction_id = "+transaction_id);
+            logger.info("productCode = "+product_code);
+            logger.info("service Name = "+service_name);
+            logger.info("status Before = "+status +" --> "+status_value);
+            logger.info("expire Time Before = "+reg.getExpireTime());
+            logger.info("renew  Time Before = "+reg.getRenewTime());
+            logger.info("number Reg  Before = "+reg.getNumberReg());
 
             Process_Request process_mo = new Process_Request();
             process_mo.setMsisdn(msisdn);
@@ -216,7 +238,7 @@ public class ExtendProcess implements Runnable {
 
             int useproduct = 0;
 
-            // step 2
+            // step 1
             if (useproduct == 0) {
                 if (!isframeVal) {
                     if (prod_start_date != null && prod_end_date != null) {
@@ -247,36 +269,13 @@ public class ExtendProcess implements Runnable {
                     }
 
                 } else {
-
-                    if (startFrameTime != null && endFrameTime != null) {
-                        if (startFrameTime.after(endFrameTime)) {
+                    if (startFrameTime != null && endFrameTime != null && startFrameTime.after(endFrameTime)) {
                             useproduct = 1;               // start time is after end time. wrong time configuration
                             logger.warn("OFFER :" + product_code + " have START-TIME=" + startFrameTime + " which is after END-TIME =" + endFrameTime);
-                        } else {
-                            if (startFrameTime.after(receive_time)) {
-                                useproduct = 2;            // start time is after receive time customer cannot register to product. product not available.
-                                logger.warn("OFFER :" + product_code + " have START-TIME=" + startFrameTime + " which is after CURRENT-TIME =" + receive_time);
-                            }
-                            if (endFrameTime.before(receive_time)) {
-                                useproduct = 3;            // end time is before receive time customer cannot register to product. product is expire
-                                logger.warn("OFFER :" + product_code + " have END-TIME=" + endFrameTime + " which is before CURRENT-TIME =" + receive_time);
-                            }
-                        }
-                    } else if (startFrameTime != null) {
-                        if (startFrameTime.after(receive_time)) {
-                            useproduct = 2;            // start time is after receive time customer cannot register to product. product not available.
-                            logger.warn("OFFER :" + product_code + " have START-TIME=" + startFrameTime + " which is after CURRENT-TIME =" + receive_time);
-                        }
-                    } else if (endFrameTime != null) {
-                        if (endFrameTime.before(receive_time)) {
-                            useproduct = 3;            // end time is before receive time customer cannot register to product. product is expire
-                            logger.warn("OFFER :" + product_code + " have END-TIME=" + endFrameTime + " which is before CURRENT-TIME =" + receive_time);
-
-                        }
-                    }
+                    } 
                 }
             }
-            // step 5
+            // step 2
             if (useproduct == 0) {
                 useproduct = executePromotion(msisdn, transaction_id, product, receive_time, promo);
                 if (useproduct == 0) {
@@ -302,11 +301,16 @@ public class ExtendProcess implements Runnable {
                     process_mo.setNotificationCode("EXTEND-PRODUCT-SUCCESS-" + product_code);
                     extend_his_desc = "EXTEND-PRODUCT-SUCCESS-" + product_code;
                     charge_status = 0;
+                    status_value = "ACTIVE";
                     registerRepo.save(reg);
 
                     if (isNotifyExt) {
                         Sender.addMo_Queue(process_mo);
                     }
+                    
+                    logger.info("Expire Time After = "+expire_time);
+                    logger.info("renew  Time After = "+reg.getRenewTime());
+                    logger.info("number Reg  After = "+reg.getNumberReg());
                     break;
 
                 case 1:
@@ -315,7 +319,7 @@ public class ExtendProcess implements Runnable {
                     process_mo.setNotificationCode("EXTEND-PRODUCT-WRONG-TIME-" + product_code);
                     extend_his_desc = "EXTEND-PRODUCT-WRONG-TIME-" + product_code;
                     charge_status = 1;
-
+                    status_value = "OFFER_EXPIRE";
                     reg.setCancelTime(new Date());
                     reg.setStatus(-2);
                     registerRepo.save(reg);
@@ -329,10 +333,12 @@ public class ExtendProcess implements Runnable {
                     Timestamp cancel_time = getExpire_Time(pending, new Timestamp(renewTime.getTime()));
                     if (receive_time.after(cancel_time)) {
                         reg.setStatus(0);
+                        status_value = "CANCEL";
                         reg.setCancelTime(new Date());
                         registerRepo.save(reg);
                     } else if (status != 2) {
                         reg.setStatus(2);
+                        status_value = "PENDING";
                         registerRepo.save(reg);
                     }
                     break;
@@ -343,6 +349,7 @@ public class ExtendProcess implements Runnable {
                     process_mo.setNotificationCode("EXTEND-PRODUCT-CUSTOMER-BLOCK-" + product_code);
                     extend_his_desc = "EXTEND-PRODUCT-CUSTOMER-BLOCK-" + product_code;
                     charge_status = 3;
+                    status_value = "CANCEL_OPERATOR";
                     break;
                 case 6:
                     process_mo.setNotificationCode("REG-PRODUCT-WRONG-API-CONNECTION-" + product_code);
@@ -351,7 +358,9 @@ public class ExtendProcess implements Runnable {
                     break;
 
             }
-
+            logger.info("status After = "+status +" --> "+status_value);
+            logger.info("Resutl Extend = "+extend_his_desc);
+            
             Timestamp last_time = new Timestamp(System.currentTimeMillis());
             long diffInMS = (last_time.getTime() - receive_time.getTime());
 
@@ -440,6 +449,7 @@ public class ExtendProcess implements Runnable {
                             break;
                     }
 
+                    logger.info("Charge Fee = "+charge_fee);
                     List<Param> listParam = new ArrayList<Param>();
                     listParam.add(new Param(commonConfig.getChargingAliasAmount(), String.valueOf(charge_fee)));
                     listParam.add(new Param(commonConfig.getChargingAliasMsisdn(), msisdn.trim()));
@@ -489,7 +499,7 @@ public class ExtendProcess implements Runnable {
 
         if (product.getExtendFee() > 0) {
             charge_fee = product.getExtendFee();
-
+            logger.info("Charge Fee = "+charge_fee);
             List<Param> listParam = new ArrayList<Param>();
             listParam.add(new Param(commonConfig.getChargingAliasAmount(), String.valueOf(charge_fee)));
             listParam.add(new Param(commonConfig.getChargingAliasMsisdn(), msisdn.trim()));
