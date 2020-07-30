@@ -11,6 +11,7 @@ import com.tatsinktech.extend.beans.WS_Request;
 import com.tatsinktech.extend.services.BillingClient;
 import com.tatsinktech.extend.config.Load_Configuration;
 import com.tatsinktech.extend.model.register.Extend_Hist;
+import com.tatsinktech.extend.model.register.Mo_Extend;
 import com.tatsinktech.extend.model.register.Product;
 import com.tatsinktech.extend.model.register.Promotion;
 import com.tatsinktech.extend.model.register.Reduction_Type;
@@ -37,6 +38,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import com.tatsinktech.extend.model.repository.Extend_HistRepository;
+import com.tatsinktech.extend.model.repository.Mo_ExtendRepository;
+import java.util.HashMap;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort.Direction;
 
@@ -53,6 +56,7 @@ public class ExtendProcess implements Runnable {
     private static int number_thread;
     private static int maxRow;
     private static InetAddress address;
+    private static HashMap<String, Product> SETPRODUCT;
 
     private int threadID;
 
@@ -61,6 +65,9 @@ public class ExtendProcess implements Runnable {
 
     @Autowired
     private Extend_HistRepository extendhisRepo;
+    
+    @Autowired
+    private Mo_ExtendRepository moExtRepo;
 
     @Autowired
     private CommunService communsrv;
@@ -83,8 +90,9 @@ public class ExtendProcess implements Runnable {
     private void init() {
         ExtendProcess.sleep_duration = Integer.parseInt(commonConfig.getApplicationExtendSleepDuration());
         ExtendProcess.number_thread = Integer.parseInt(commonConfig.getApplicationExtendNumberThread());
-        ExtendProcess.maxRow = Integer.parseInt(commonConfig.getApplicationExtendMaxRegRecord());
+        ExtendProcess.maxRow = Integer.parseInt(commonConfig.getApplicationExtendMaxMoRow());
         ExtendProcess.address = Utils.gethostName();
+        ExtendProcess.SETPRODUCT = commonConfig.getSETPRODUCT();
 
     }
 
@@ -96,37 +104,29 @@ public class ExtendProcess implements Runnable {
             // Removing an element from the Queue using poll()
             // The poll() method returns null if the Queue is empty.
 
-            Date current_time = new Date();
             PageRequest pageable = PageRequest.of(0, maxRow, Direction.ASC, "id");
             int passage = 0;
-            logger.info("################ START SCAN BY "+Thread.currentThread().getName()+"###############");
+            logger.info("################ START PROCESS MO BY "+Thread.currentThread().getName()+"###############");
             if (number_thread < 2) {
                 
-                List<Register> listActiveRegister = registerRepo.findActiveExtend(current_time, pageable);
-                if (listActiveRegister != null && !listActiveRegister.isEmpty()) {
+                List<Mo_Extend> listMo_Extend = moExtRepo.findMoExtend(pageable);
+                
+                if (listMo_Extend != null && !listMo_Extend.isEmpty()) {
                     passage = 1;
-                    processExtend(listActiveRegister);
+                    processExtend(listMo_Extend);
 
-                }
-
-                List<Register> listPendingRegister = registerRepo.findPendingExtend(pageable);
-                if (listPendingRegister != null && !listPendingRegister.isEmpty()) {
-                    passage = 1;
-                    processExtend(listPendingRegister);
+                }else{
+                  logger.info("---------> MO_EXT TABLE IS EMPTY");  
                 }
 
             } else {
-                List<Register> listActiveRegister = registerRepo.findActiveExtendByThread(current_time, number_thread, threadID, pageable);
-                if (listActiveRegister != null && !listActiveRegister.isEmpty()) {
+                 List<Mo_Extend> listMo_Extend = moExtRepo.findMoExtend_Thread(number_thread, threadID, pageable);
+                if (listMo_Extend != null && !listMo_Extend.isEmpty()) {
                     passage = 1;
-                    processExtend(listActiveRegister);
+                    processExtend(listMo_Extend);
 
-                }
-
-                List<Register> listPendingRegister = registerRepo.findPendingExtendByThread(number_thread, threadID, pageable);
-                if (listPendingRegister != null && !listPendingRegister.isEmpty()) {
-                    passage = 1;
-                    processExtend(listPendingRegister);
+                }else{
+                  logger.info("---------> MO_EXT TABLE IS EMPTY");  
                 }
             }
             try {
@@ -137,16 +137,16 @@ public class ExtendProcess implements Runnable {
         }
     }
 
-    private void processExtend(List<Register> listRegister) {
+    private void processExtend(List<Mo_Extend> listMo_Extend) {
 
-        logger.info("#################### START NEW SCAN side = " + listRegister.size() + " ##################");
-        for (Register reg : listRegister) {
+        logger.info("#################### PROCESS MO_EXT Size = " + listMo_Extend.size() + " ##################");
+        for (Mo_Extend mo : listMo_Extend) {
             
-            String msisdn = reg.getMsisdn();
-            String transaction_id = reg.getTransactionId();
-            Product product = reg.getProduct();
-            long number_reg = reg.getNumberReg();
-            int status = reg.getStatus();
+            String msisdn = mo.getMsisdn();
+            String transaction_id = mo.getTransactionId();
+            Product product = SETPRODUCT.get(mo.getProductCode());
+            long number_reg = mo.getNumberReg();
+            int status = mo.getStatus();
             String product_code = product.getProductCode();
             String service_name = product.getService().getServiceName();
             String service_channel = product.getService().getSendChannel();
@@ -171,9 +171,9 @@ public class ExtendProcess implements Runnable {
             logger.info("productCode = "+product_code);
             logger.info("service Name = "+service_name);
             logger.info("status Before = "+status +" --> "+status_value);
-            logger.info("expire Time Before = "+reg.getExpireTime());
-            logger.info("renew  Time Before = "+reg.getRenewTime());
-            logger.info("number Reg  Before = "+reg.getNumberReg());
+            logger.info("expire Time Before = "+mo.getExpireTime());
+            logger.info("renew  Time Before = "+mo.getRenewTime());
+            logger.info("number Reg  Before = "+mo.getNumberReg());
 
             Process_Request process_mo = new Process_Request();
             process_mo.setMsisdn(msisdn);
@@ -283,7 +283,7 @@ public class ExtendProcess implements Runnable {
                 }
 
             }
-
+            Register reg = registerRepo.getOne(mo.getReg_id());
             switch (useproduct) {
                 case 0:
                     reg.setAutoextend(product.getIsExtend());
@@ -377,6 +377,8 @@ public class ExtendProcess implements Runnable {
             extendhisRepo.save(extend_hist);
 
             logger.info("insert into extend_his");
+            
+            moExtRepo.delete(mo);
 
         }
     }

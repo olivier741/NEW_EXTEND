@@ -53,8 +53,14 @@ public class Load_Configuration implements Serializable {
     @Value("${application.extend.sleep-duration}")
     private String applicationExtendSleepDuration;
 
-    @Value("${application.extend.maxRegRecord}")
-    private String applicationExtendMaxRegRecord;
+    @Value("${application.extend.mo-maxRow}")
+    private String applicationExtendMaxMoRow;   
+     
+    @Value("${application.extend.scheduler-fixedDelay}")
+    private Integer applicationExtendFixeDelay;
+    
+    @Value("${application.extend.scheduler-poolSize}")
+    private Integer applicationExtendPoolSize;
 
     @Value("${security.oauth2.client.user-authorization-uri}")
     private String chargingUrl;
@@ -128,10 +134,9 @@ public class Load_Configuration implements Serializable {
     @Value("${spring.kafka.topic.connection-timeOut-in-ms}")
     private String connectionTimeOutInMs;
 
-    private HashMap<String, Command> SETCOMMAND = new HashMap<String, Command>();
+
     private HashMap<String, Notification_Conf> SETNOTIFICATION = new HashMap<String, Notification_Conf>();
     private HashMap<String, Product> SETPRODUCT = new HashMap<String, Product>();
-    private List<Request_Conf> ListRequest_conf;
 
     @Autowired
     private CommandRepository commandRepo;
@@ -148,6 +153,7 @@ public class Load_Configuration implements Serializable {
     
       @PostConstruct
     private void init() {
+        loadProduct();
         loadNotificationConf();      
     }
 
@@ -179,8 +185,8 @@ public class Load_Configuration implements Serializable {
         return applicationExtendSleepDuration;
     }
 
-    public String getApplicationExtendMaxRegRecord() {
-        return applicationExtendMaxRegRecord;
+    public String getApplicationExtendMaxMoRow() {
+        return applicationExtendMaxMoRow;
     }
 
     public String getProducer_topic() {
@@ -275,20 +281,13 @@ public class Load_Configuration implements Serializable {
         return viewApiAliasDescription;
     }
 
-    public HashMap<String, Command> getSETCOMMAND() {
-        return SETCOMMAND;
-    }
-
+  
     public HashMap<String, Notification_Conf> getSETNOTIFICATION() {
         return SETNOTIFICATION;
     }
 
     public HashMap<String, Product> getSETPRODUCT() {
         return SETPRODUCT;
-    }
-
-    public List<Request_Conf> getListRequest_conf() {
-        return ListRequest_conf;
     }
 
     public CommandRepository getCommandRepo() {
@@ -313,6 +312,22 @@ public class Load_Configuration implements Serializable {
 
     public void setChargingAliasTransaction(String chargingAliasTransaction) {
         this.chargingAliasTransaction = chargingAliasTransaction;
+    }
+
+    public Integer getApplicationExtendFixeDelay() {
+        return applicationExtendFixeDelay;
+    }
+
+    public Integer getApplicationExtendPoolSize() {
+        return applicationExtendPoolSize;
+    }
+    
+    private void loadProduct() {
+        List<Product> listProduct = productRepo.findAll();
+        SETPRODUCT.clear();
+        for (Product prod : listProduct) {
+            SETPRODUCT.put(prod.getProductCode(), prod);
+        }
     }
 
     private void loadNotificationConf() {
